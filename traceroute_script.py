@@ -1,13 +1,12 @@
 import argparse
+import re
 import subprocess
 import sys
-import os
-from typing import List
 
 
 def traceroute(target: str, progressive: bool, output_file: str):
     """
-    Perform a traceroute to a URL or an IP address.
+    Perform a traceroute to a URL or an IP address and extract the IPs of the hops.
 
     Args:
         target (str): The traceroute target (URL or IP).
@@ -25,20 +24,50 @@ def traceroute(target: str, progressive: bool, output_file: str):
             file = open(output_file, "w")
             print(f"Results will be saved to {output_file}\n")
 
+        # Regular expression to extract both IPv4 and IPv6 addresses
+        # This pattern matches both IPv4 (xxx.xxx.xxx.xxx) and IPv6 (xxxx:xxxx:xxxx:xxxx:xxxx:xxxx:xxxx:xxxx)
+        ip_pattern = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|(?:[0-9a-fA-F:]+:+)+[0-9a-fA-F:]+\b")
+
+        # Set to store unique IPs
+        unique_ips = set()
+
         # Progressive execution
         if progressive:
+            # Run the traceroute command and capture output line by line
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             for line in process.stdout:
-                print(line.strip())
-                if file:
-                    file.write(line)
+                # Find IP addresses in each line
+                ip_matches = ip_pattern.findall(line)
+                for ip in ip_matches:
+                    # Add the IP to the set (automatically handles duplicates)
+                    if ip not in unique_ips:
+                        print(ip)
+                        unique_ips.add(ip)
+                        if file:
+                            file.write(ip + "\n")
             process.wait()
+
         else:
-            # Blocking execution (complete)
+            # Run the traceroute command and capture output
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            print(result.stdout)
-            if file:
-                file.write(result.stdout)
+            # Debug: Check if traceroute executed correctly
+            if result.returncode != 0:
+                print(f"Traceroute failed: {result.stderr}")
+                return
+
+            # Find IP addresses in the complete output
+            ip_matches = ip_pattern.findall(result.stdout)
+            if not ip_matches:
+                print("No IP addresses found in traceroute output.")
+            else:
+                # Print and write the IPs to file
+                for ip in ip_matches:
+                    # Add the IP to the set (automatically handles duplicates)
+                    if ip not in unique_ips:
+                        print(ip)
+                        unique_ips.add(ip)
+                        if file:
+                            file.write(ip + "\n")
 
         # Close the file if used
         if file:
